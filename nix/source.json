@@ -1,0 +1,36 @@
+{
+  "productId": "9PLM9XGG6VKS",
+  "version": "26.727.4816.0",
+  "fileName": "OpenAI.Codex_26.727.4816.0_x64.msix",
+  "sha256": "sha256-Pgs17CPms2KvMWpHkyY9JwouomDaCW+tB8m9bswdWn0=",
+  "identity": "OpenAI.Codex",
+  "publisher": "CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B",
+  "architecture": "x64",
+  "compatibility": {
+    "owlRuntimeArchiveSha": "fae9088c09bd2bb4cedbdb44e749fe5313dbc19d20f677fa6a7b25b3aec27d1f",
+    "codex": {
+      "version": "0.146.0-alpha.9.2",
+      "bundledX64Sha256": {
+        "codex": "d13cfcda217421fb20d0aa6aa80819a62483a72e4a7fd52743675ca20d86377c",
+        "codex-code-mode-host": "4634ebc7d5d88b3d5773bdb15d075330d5ee991c2f7dc290cf5901bd63118e41",
+        "rg": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849"
+      },
+      "packages": {
+        "x86_64-linux": {
+          "target": "x86_64-unknown-linux-musl",
+          "sha256": "sha256-qEx81ai8FMtj5NZojUeSyLIlS6bMBpheY8FTgnH/qFc="
+        },
+        "aarch64-linux": {
+          "target": "aarch64-unknown-linux-musl",
+          "sha256": "sha256-IdxCYlhoub49xZ/ijksXFj7oXD7JuDARc9PU7G5GKvM="
+        }
+      }
+    },
+    "nativeModules": {
+      "better-sqlite3": "12.9.0",
+      "node-pty": "1.1.0",
+      "node-hid": "3.3.0",
+      "@serialport/bindings-cpp": "12.0.1"
+    }
+  }
+}
