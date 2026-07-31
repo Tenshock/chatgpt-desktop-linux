@@ -85,6 +85,26 @@
                   ' ${./nix/source.json} >/dev/null
                 touch "$out"
               '';
+          store-output-parser =
+            pkgs.runCommand "chatgpt-store-output-parser-check"
+              {
+                nativeBuildInputs = [ pkgs.gawk ];
+              }
+              ''
+                cat > storelib.log <<'EOF'
+                [INFO] [fe3.packageFound] 1/2 — OpenAI.Codex_26.727.4816.0_x64__2p2nqsd0c76g0 | updateId=x64
+                [INFO] [fe3.linkReceived] 1/2 — OpenAI.Codex_26.727.4816.0_arm64__2p2nqsd0c76g0 | uri=http://dl.delivery.mp.microsoft.com/arm64 | updateId=arm64
+                [INFO] [fe3.linkReceived] 2/2 — OpenAI.Codex_26.727.4816.0_x64__2p2nqsd0c76g0 | uri=http://dl.delivery.mp.microsoft.com/x64?token=one&part=two | updateId=x64
+                EOF
+
+                awk -f ${./nix/parse-storelib-output.awk} storelib.log > actual
+                cat > expected <<'EOF'
+                OpenAI.Codex_26.727.4816.0_x64__2p2nqsd0c76g0
+                http://dl.delivery.mp.microsoft.com/x64?token=one&part=two
+                EOF
+                diff -u expected actual
+                touch "$out"
+              '';
           scripts =
             pkgs.runCommand "chatgpt-shell-check"
               {

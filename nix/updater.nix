@@ -47,6 +47,7 @@ writeShellApplication {
     export CHATGPT_MICROSOFT_ROOT_2010=${roots.root2010}
     export CHATGPT_MICROSOFT_ROOT_2011=${roots.root2011}
     export CHATGPT_STORE_CA_BUNDLE=${storelib-rs}/etc/ssl/certs/storelib-ca-bundle.crt
+    export CHATGPT_STORE_OUTPUT_PARSER=${./parse-storelib-output.awk}
     ${builtins.readFile ./update-source.sh}
   '';
 }

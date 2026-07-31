@@ -47,16 +47,11 @@ for attempt in 1 2 3; do
   storelib_rs --log-level info packages "$product_id" \
     > "$work_dir/storelib.log" 2>&1 || true
 
-  moniker=$(grep -Eo 'OpenAI\.Codex_[0-9.]+_x64__2p2nqsd0c76g0(\.msix)?' \
-    "$work_dir/storelib.log" | head -n 1 || true)
-  url=$(awk '
-    /OpenAI\.Codex_[0-9.]+_x64__/ { wanted = 1; next }
-    wanted && /Link received: https?:\/\// {
-      sub(/^.*Link received: /, "")
-      print
-      exit
-    }
-  ' "$work_dir/storelib.log")
+  mapfile -t resolved_package < <(
+    awk -f "$CHATGPT_STORE_OUTPUT_PARSER" "$work_dir/storelib.log" || true
+  )
+  moniker=${resolved_package[0]:-}
+  url=${resolved_package[1]:-}
 
   [[ -n $moniker && -n $url ]] && break
   sleep "$attempt"
