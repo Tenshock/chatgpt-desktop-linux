@@ -16,7 +16,7 @@ build. See [NOTICE.md](NOTICE.md).
 ## Status
 
 - Source: official Microsoft Store package `OpenAI.Codex`.
-- Current MSIX: `26.727.4816.0`.
+- Current MSIX: `26.727.6591.0`.
 - Electron: 42.
 - Platforms: `x86_64-linux` and `aarch64-linux`.
 - Electron sandbox: enabled.
