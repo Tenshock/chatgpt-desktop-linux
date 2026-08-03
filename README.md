@@ -134,7 +134,7 @@ happens around it:
 - exact `@parcel/watcher` 2.5.6 Linux binding declared by official app;
 - version-matched official Linux `codex`, `codex-code-mode-host`, and `rg`
   helpers (MSIX copies on x86-64, OpenAI Codex release package on ARM64);
-- Wayland decorations and libsecret password-store flags;
+- Wayland auto-selection and libsecret password-store flags;
 - desktop entry, icon, and `codex://` protocol association.
 
 ## Differences from ilysenko/codex-desktop-linux

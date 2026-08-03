@@ -215,7 +215,6 @@ stdenvNoCC.mkDerivation {
       --set CODEX_ELECTRON_RESOURCES_PATH "$resources" \
       --prefix PATH : ${lib.makeBinPath [ systemdMinimal ]} \
       --add-flags "--ozone-platform-hint=auto" \
-      --add-flags "--enable-features=WaylandWindowDecorations" \
       --add-flags "--password-store=gnome-libsecret"
 
     ${lib.optionalString (githubTokenCommand != null) ''
