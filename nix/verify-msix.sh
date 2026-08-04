@@ -121,6 +121,7 @@ openssl pkcs7 \
   -out "$work_dir/signature-certs.pem"
 openssl verify \
   -ignore_critical \
+  -no_check_time \
   -CAfile "$work_dir/root-2011.pem" \
   -untrusted "$work_dir/signature-certs.pem" \
   "$work_dir/signature-certs.pem" > /dev/null
