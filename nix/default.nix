@@ -13,6 +13,7 @@
   makeWrapper,
   openssl,
   osslsigncode,
+  perl,
   requireFile,
   systemdMinimal,
   unzip,
@@ -20,8 +21,8 @@
 
 let
   source = builtins.fromJSON (builtins.readFile ./source.json);
-  hostPlatform = stdenvNoCC.hostPlatform;
-  isAarch64 = hostPlatform.isAarch64;
+  inherit (stdenvNoCC) hostPlatform;
+  inherit (hostPlatform) isAarch64;
   npmArch =
     if hostPlatform.isx86_64 then
       "x64"
@@ -78,6 +79,7 @@ stdenvNoCC.mkDerivation {
     makeWrapper
     openssl
     osslsigncode
+    perl
     unzip
   ];
 
@@ -125,6 +127,19 @@ stdenvNoCC.mkDerivation {
     cp -R app/resources "$out/lib/chatgpt/resources"
     chmod -R u+w "$out/lib/chatgpt/resources"
     resources="$out/lib/chatgpt/resources"
+
+    # ChatGPT explicitly enables Electron's title-bar overlay on Linux. Patch
+    # its overlay-options helper to return false while preserving the byte
+    # length of app.asar, since changing an entry size would invalidate later
+    # archive offsets.
+    perl -0777pi -e '
+      my $old = q{function A9(e=1){return{color:O9,symbolColor:l.nativeTheme.shouldUseDarkColors?_we:gwe,height:Math.round(hwe*e)}}};
+      my $new = q{function A9(e=1){return!1}};
+      $new .= " " x (length($old) - length($new));
+      my $count = s/\Q$old\E/$new/;
+      die "expected exactly one Linux title-bar overlay helper, found $count\n"
+        unless $count == 1;
+    ' "$resources/app.asar"
 
     cp -R ${nativeModules}/parcel-watcher/node_modules "$resources/"
 
@@ -196,7 +211,9 @@ stdenvNoCC.mkDerivation {
       --add-flags "--password-store=gnome-libsecret"
 
     installed_asar_hash=$(sha256sum "$resources/app.asar" | cut -d ' ' -f 1)
-    [[ $source_asar_hash == "$installed_asar_hash" ]]
+    [[ $source_asar_hash != "$installed_asar_hash" ]]
+
+    grep -aFq 'function A9(e=1){return!1}' "$resources/app.asar"
 
     for helper in codex codex-code-mode-host rg; do
       file "$resources/$helper" | grep -Eq 'ELF 64-bit.*${elfArchitecture}'
@@ -209,6 +226,7 @@ stdenvNoCC.mkDerivation {
       file "$addon" | grep -Eq 'ELF 64-bit.*${elfArchitecture}'
     done
     ! grep -Fq -- '--no-sandbox' "$out/bin/chatgpt"
+    ! grep -Fq -- '--disable-features=WaylandWindowDecorations' "$out/bin/chatgpt"
     grep -Fq "$out/lib/chatgpt/chatgpt" "$out/lib/chatgpt/electron-wrapper"
     ! grep -Fq "$resources/app.asar" "$out/bin/chatgpt"
     test -f "$resources/node_modules/@parcel/watcher/index.js"
