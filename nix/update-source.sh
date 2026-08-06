@@ -3,12 +3,17 @@
 set -euo pipefail
 
 write_metadata=false
+override_compatibility=false
 source_dir=
 
 while (( $# > 0 )); do
   case "$1" in
     --write)
       write_metadata=true
+      shift
+      ;;
+    --override)
+      override_compatibility=true
       shift
       ;;
     --source-dir)
@@ -21,6 +26,11 @@ while (( $# > 0 )); do
       ;;
   esac
 done
+
+if $override_compatibility && ! $write_metadata; then
+  echo "--override requires --write" >&2
+  exit 2
+fi
 
 [[ -n $source_dir && -f $source_dir/source.json ]] || {
   echo "--source-dir must point at the package source directory" >&2
@@ -104,7 +114,7 @@ curl \
   --output "$download" \
   "$url"
 
-verify-chatgpt-msix \
+verify_args=(
   "$download" \
   "$CHATGPT_MICROSOFT_ROOT_2010" \
   "$CHATGPT_MICROSOFT_ROOT_2011" \
@@ -119,6 +129,32 @@ verify-chatgpt-msix \
   "$codex_sha" \
   "$code_mode_host_sha" \
   "$rg_sha"
+)
+
+runtime_sha_output=
+if $override_compatibility; then
+  runtime_sha_output="$work_dir/owl-runtime-sha"
+fi
+codex_sha_output=
+if $override_compatibility; then
+  codex_sha_output="$work_dir/codex-resource-sha.json"
+fi
+verify_args+=("$runtime_sha_output" "$codex_sha_output")
+
+verify-chatgpt-msix "${verify_args[@]}"
+
+verified_runtime_sha=$runtime_sha
+if [[ -n $runtime_sha_output ]]; then
+  verified_runtime_sha=$(< "$runtime_sha_output")
+fi
+verified_codex_sha=$codex_sha
+verified_code_mode_host_sha=$code_mode_host_sha
+verified_rg_sha=$rg_sha
+if [[ -n $codex_sha_output ]]; then
+  verified_codex_sha=$(jq -er .codex "$codex_sha_output")
+  verified_code_mode_host_sha=$(jq -er '."codex-code-mode-host"' "$codex_sha_output")
+  verified_rg_sha=$(jq -er .rg "$codex_sha_output")
+fi
 
 sha256=$(nix hash file "$download")
 store_path=$(nix-store --add-fixed sha256 "$download")
@@ -129,7 +165,17 @@ if $write_metadata; then
     --arg version "$version" \
     --arg file_name "$file_name" \
     --arg sha256 "$sha256" \
-    '.version = $version | .fileName = $file_name | .sha256 = $sha256' \
+    --arg runtime_sha "$verified_runtime_sha" \
+    --arg codex_sha "$verified_codex_sha" \
+    --arg code_mode_host_sha "$verified_code_mode_host_sha" \
+    --arg rg_sha "$verified_rg_sha" \
+    '.version = $version
+      | .fileName = $file_name
+      | .sha256 = $sha256
+      | .compatibility.owlRuntimeArchiveSha = $runtime_sha
+      | .compatibility.codex.bundledX64Sha256.codex = $codex_sha
+      | .compatibility.codex.bundledX64Sha256["codex-code-mode-host"] = $code_mode_host_sha
+      | .compatibility.codex.bundledX64Sha256.rg = $rg_sha' \
     "$source_dir/source.json" > "$metadata_tmp"
   mv "$metadata_tmp" "$source_dir/source.json"
 fi
@@ -139,4 +185,13 @@ echo "sha256: $sha256"
 echo "store path: $store_path"
 if $write_metadata; then
   echo "updated: $source_dir/source.json"
+fi
+if $override_compatibility && [[ $verified_runtime_sha != "$runtime_sha" ]]; then
+  echo "accepted Owl runtime: $verified_runtime_sha"
+fi
+if $override_compatibility \
+  && [[ $verified_codex_sha != "$codex_sha" \
+    || $verified_code_mode_host_sha != "$code_mode_host_sha" \
+    || $verified_rg_sha != "$rg_sha" ]]; then
+  echo "accepted bundled Codex resource hashes"
 fi

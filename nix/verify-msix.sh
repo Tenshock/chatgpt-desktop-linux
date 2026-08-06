@@ -15,6 +15,8 @@ expected_serialport=${11}
 expected_codex_sha=${12}
 expected_code_mode_host_sha=${13}
 expected_rg_sha=${14}
+runtime_sha_output=${15:-}
+codex_sha_output=${16:-}
 
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
@@ -38,8 +40,12 @@ display_name=$(xpath '/*[local-name()="Package"]/*[local-name()="Properties"]/*[
 [[ $display_name == ChatGPT ]] || { echo "unexpected MSIX display name: $display_name" >&2; exit 1; }
 
 unzip -p "$msix" app/resources/owl-electron-app.json > "$work_dir/owl-electron-app.json"
-runtime_sha=$(jq -r .runtimeArchiveSha "$work_dir/owl-electron-app.json")
-[[ $runtime_sha == "$expected_runtime_sha" ]] || {
+runtime_sha=$(jq -er .runtimeArchiveSha "$work_dir/owl-electron-app.json")
+[[ $runtime_sha =~ ^[0-9a-f]{64}$ ]] || {
+  echo "invalid Owl runtime SHA-256: $runtime_sha" >&2
+  exit 1
+}
+[[ -n $runtime_sha_output || $runtime_sha == "$expected_runtime_sha" ]] || {
   echo "unsupported Owl runtime: $runtime_sha" >&2
   exit 1
 }
@@ -78,15 +84,23 @@ verify_resource_sha() {
   local actual
 
   actual=$(unzip -p "$msix" "app/resources/$resource" | sha256sum | cut -d ' ' -f 1)
-  [[ $actual == "$expected" ]] || {
+  [[ $actual =~ ^[0-9a-f]{64}$ ]] || {
+    echo "invalid app/resources/$resource SHA-256: $actual" >&2
+    exit 1
+  }
+  [[ -n $codex_sha_output || $actual == "$expected" ]] || {
     echo "unsupported app/resources/$resource hash: $actual" >&2
     exit 1
   }
+
+  printf '%s\n' "$actual"
 }
 
-verify_resource_sha codex "$expected_codex_sha"
-verify_resource_sha codex-code-mode-host "$expected_code_mode_host_sha"
-verify_resource_sha rg "$expected_rg_sha"
+actual_codex_sha=$(verify_resource_sha codex "$expected_codex_sha")
+actual_code_mode_host_sha=$(
+  verify_resource_sha codex-code-mode-host "$expected_code_mode_host_sha"
+)
+actual_rg_sha=$(verify_resource_sha rg "$expected_rg_sha")
 
 openssl x509 -inform DER -in "$root_2010" -out "$work_dir/root-2010.pem"
 openssl x509 -inform DER -in "$root_2011" -out "$work_dir/root-2011.pem"
@@ -125,5 +139,20 @@ openssl verify \
   -CAfile "$work_dir/root-2011.pem" \
   -untrusted "$work_dir/signature-certs.pem" \
   "$work_dir/signature-certs.pem" > /dev/null
+
+if [[ -n $runtime_sha_output ]]; then
+  printf '%s\n' "$runtime_sha" > "$runtime_sha_output"
+fi
+if [[ -n $codex_sha_output ]]; then
+  jq -n \
+    --arg codex "$actual_codex_sha" \
+    --arg code_mode_host "$actual_code_mode_host_sha" \
+    --arg rg "$actual_rg_sha" \
+    '{
+      codex: $codex,
+      "codex-code-mode-host": $code_mode_host,
+      rg: $rg
+    }' > "$codex_sha_output"
+fi
 
 echo "verified ChatGPT MSIX $version ($architecture)"
