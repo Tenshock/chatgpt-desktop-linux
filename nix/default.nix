@@ -128,16 +128,23 @@ stdenvNoCC.mkDerivation {
     chmod -R u+w "$out/lib/chatgpt/resources"
     resources="$out/lib/chatgpt/resources"
 
-    # ChatGPT explicitly enables Electron's title-bar overlay on Linux. Patch
-    # its overlay-options helper to return false while preserving the byte
-    # length of app.asar, since changing an entry size would invalidate later
-    # archive offsets.
+    # ChatGPT explicitly enables Electron's title-bar overlay on Linux. Make
+    # its Linux package windows frameless and limit later overlay updates to
+    # Windows while preserving the byte length of app.asar, since changing an
+    # entry size would invalidate later archive offsets.
     perl -0777pi -e '
-      my $old = q{function A9(e=1){return{color:O9,symbolColor:l.nativeTheme.shouldUseDarkColors?_we:gwe,height:Math.round(hwe*e)}}};
-      my $new = q{function A9(e=1){return!1}};
-      $new .= " " x (length($old) - length($new));
-      my $count = s/\Q$old\E/$new/;
-      die "expected exactly one Linux title-bar overlay helper, found $count\n"
+      my $old_options = q{{titleBarStyle:`hidden`,titleBarOverlay:A9(r),...e===`quickChat`?{resizable:!0}:{}}};
+      my $new_options = q{{frame:!1,...e===`quickChat`?{resizable:!0}:{}}};
+      $new_options .= " " x (length($old_options) - length($new_options));
+      my $count = s/\Q$old_options\E/$new_options/;
+      die "expected exactly one Linux title-bar option set, found $count\n"
+        unless $count == 1;
+
+      my $old_guard = q{if(process.platform!==`win32`&&process.platform!==`linux`||t!==`primary`&&t!==`quickChat`)return;};
+      my $new_guard = q{if(process.platform!==`win32`||t!==`primary`&&t!==`quickChat`)return;};
+      $new_guard .= " " x (length($old_guard) - length($new_guard));
+      $count = s/\Q$old_guard\E/$new_guard/;
+      die "expected exactly one title-bar overlay platform guard, found $count\n"
         unless $count == 1;
     ' "$resources/app.asar"
 
@@ -213,7 +220,10 @@ stdenvNoCC.mkDerivation {
     installed_asar_hash=$(sha256sum "$resources/app.asar" | cut -d ' ' -f 1)
     [[ $source_asar_hash != "$installed_asar_hash" ]]
 
-    grep -aFq 'function A9(e=1){return!1}' "$resources/app.asar"
+    grep -aFq '{frame:!1,...e===`quickChat`?{resizable:!0}:{}}' "$resources/app.asar"
+    grep -aFq \
+      'if(process.platform!==`win32`||t!==`primary`&&t!==`quickChat`)return;' \
+      "$resources/app.asar"
 
     for helper in codex codex-code-mode-host rg; do
       file "$resources/$helper" | grep -Eq 'ELF 64-bit.*${elfArchitecture}'
