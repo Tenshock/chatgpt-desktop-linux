@@ -6,7 +6,6 @@
   callPackage,
   electron_42,
   file,
-  gh,
   imagemagick,
   jq,
   libxml2,
@@ -17,8 +16,6 @@
   requireFile,
   systemdMinimal,
   unzip,
-  writeShellScript,
-  githubTokenCommand ? null,
 }:
 
 let
@@ -37,22 +34,6 @@ let
   nativeModules = callPackage ./native-modules { };
   codexPackage = callPackage ./codex-package.nix { };
   updater = callPackage ./updater.nix { };
-  launcherName = if githubTokenCommand == null then "chatgpt" else "chatgpt-uncredentialed";
-  credentialLauncher =
-    if githubTokenCommand == null then
-      null
-    else
-      writeShellScript "chatgpt-credential-launcher" ''
-        set -euo pipefail
-        export PATH=${lib.makeBinPath [ gh ]}:$PATH
-        GH_TOKEN="$(${lib.escapeShellArgs githubTokenCommand})"
-        if [[ -z $GH_TOKEN ]]; then
-          echo "GitHub token command returned an empty value" >&2
-          exit 1
-        fi
-        export GH_TOKEN
-        exec "$@"
-      '';
 
   msix = requireFile {
     name = source.fileName;
@@ -80,9 +61,6 @@ let
     mimeTypes = [ "x-scheme-handler/codex" ];
   };
 in
-assert lib.assertMsg (
-  githubTokenCommand == null || githubTokenCommand != [ ]
-) "githubTokenCommand must be null or a non-empty argument list";
 stdenvNoCC.mkDerivation {
   pname = "chatgpt-desktop";
   inherit (source) version;
@@ -211,16 +189,11 @@ stdenvNoCC.mkDerivation {
     cp ${desktopItem}/share/applications/chatgpt.desktop \
       "$out/share/applications/chatgpt.desktop"
 
-    makeWrapper "$out/lib/chatgpt/electron-wrapper" "$out/bin/${launcherName}" \
+    makeWrapper "$out/lib/chatgpt/electron-wrapper" "$out/bin/chatgpt" \
       --set CODEX_ELECTRON_RESOURCES_PATH "$resources" \
       --prefix PATH : ${lib.makeBinPath [ systemdMinimal ]} \
       --add-flags "--ozone-platform-hint=auto" \
       --add-flags "--password-store=gnome-libsecret"
-
-    ${lib.optionalString (githubTokenCommand != null) ''
-      makeWrapper ${credentialLauncher} "$out/bin/chatgpt" \
-        --add-flags "$out/bin/chatgpt-uncredentialed"
-    ''}
 
     installed_asar_hash=$(sha256sum "$resources/app.asar" | cut -d ' ' -f 1)
     [[ $source_asar_hash == "$installed_asar_hash" ]]

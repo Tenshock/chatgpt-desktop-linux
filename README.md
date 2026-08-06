@@ -94,35 +94,6 @@ environment.systemPackages = [
 ];
 ```
 
-## GitHub CLI authentication
-
-Default package uses normal `gh` authentication and does not receive a token.
-
-For setups where the user's `gh` wrapper is too slow for the application's
-one-second `gh --version` probe, `githubTokenCommand` can resolve a token once
-at application startup. The command is an argument list executed directly,
-without a shell. For example, with 1Password:
-
-```nix
-programs.chatgptDesktop = {
-  enable = true;
-  githubTokenCommand = [
-    "/run/wrappers/bin/op"
-    "read"
-    "op://Vault/GitHub/token"
-  ];
-};
-```
-
-The same option works with `pass`, Bitwarden, `secret-tool`, or a secret file
-managed by sops-nix or agenix. Command arguments enter the Nix store, but its
-output does not. Put only references or secret-file paths in the argument list,
-never a literal token.
-
-The resolved value is inherited by the ChatGPT process as `GH_TOKEN`. Use this
-option only when accepting that exposure. A failing command or empty output
-prevents the application from starting.
-
 ## What Package Changes
 
 Package preserves official application archive byte-for-byte. Linux adaptation
