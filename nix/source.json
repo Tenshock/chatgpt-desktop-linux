@@ -1,18 +1,18 @@
 {
   "productId": "9PLM9XGG6VKS",
-  "version": "26.730.8199.0",
-  "fileName": "OpenAI.Codex_26.730.8199.0_x64.msix",
-  "sha256": "sha256-omoC6kgDl8Pn6PAMOt6roloYFmvVKvVWZkRaYWLpqXQ=",
+  "version": "26.803.5235.0",
+  "fileName": "OpenAI.Codex_26.803.5235.0_x64.msix",
+  "sha256": "sha256-8orQ6Ut14yc8Hoq4f97xWiOV+5EmJg6LYjznPa00hVg=",
   "identity": "OpenAI.Codex",
   "publisher": "CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B",
   "architecture": "x64",
   "compatibility": {
-    "owlRuntimeArchiveSha": "6d6b308f7dd4b06cf3579adde70bb64d26348726cb1b55470886ac2047cb5c7b",
+    "owlRuntimeArchiveSha": "9c99463b86477f728da2985d4e3d390f9ad4beac53187f3f15028511b0b6a396",
     "codex": {
       "version": "0.146.0-alpha.9.2",
       "bundledX64Sha256": {
-        "codex": "788b108fc220538f958d314899385f27358f53fb840e545528db4ebf80ecac26",
-        "codex-code-mode-host": "ded542914c0d8bf6083a6a6b7b4cad3edb3db51743d2914e435b3f70365d6e24",
+        "codex": "6e63a38388455ed175ab72d24813d148186e4f6cc55db787fd12b4ebec871012",
+        "codex-code-mode-host": "6285d8dd05935cda6edb87d2dbea9b1cfb3912916c7e3f9b4ddfb09066c7c8bd",
         "rg": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849"
       },
       "packages": {
