@@ -27,7 +27,7 @@ buildNpmPackage {
   inherit (source) version;
 
   src = ./.;
-  npmDepsHash = "sha256-FbdvuZUZ7D+K43hV9ziktWUzMucfkl+8Y+D9Aa29O+Y=";
+  npmDepsHash = "sha256-AjozmsePzT7yyzL5G/w0S7eiHbc84u6Fc13P7Ya7j0M=";
   npmFlags = [ "--ignore-scripts" ];
 
   nativeBuildInputs = [
