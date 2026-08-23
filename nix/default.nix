@@ -133,7 +133,7 @@ stdenvNoCC.mkDerivation {
     # Windows while preserving the byte length of app.asar, since changing an
     # entry size would invalidate later archive offsets.
     perl -0777pi -e '
-      my $old_options = q{{titleBarStyle:`hidden`,titleBarOverlay:A9(r),...e===`quickChat`?{resizable:!0}:{}}};
+      my $old_options = q{{titleBarStyle:`hidden`,titleBarOverlay:T9(r),...e===`quickChat`?{resizable:!0}:{}}};
       my $new_options = q{{frame:!1,...e===`quickChat`?{resizable:!0}:{}}};
       $new_options .= " " x (length($old_options) - length($new_options));
       my $count = s/\Q$old_options\E/$new_options/;
