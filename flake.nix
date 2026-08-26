@@ -1,5 +1,5 @@
 {
-  description = "Nix package for the official ChatGPT desktop application on Linux";
+  description = "Nix package for OpenAI's official ChatGPT desktop application for Linux";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -24,20 +24,11 @@
         let
           pkgs = pkgsFor system;
           chatgptDesktop = pkgs.callPackage ./nix { };
-          updater = pkgs.callPackage ./nix/updater.nix { };
-          fetchSource = pkgs.writeShellApplication {
-            name = "fetch-chatgpt-source";
-            runtimeInputs = [ updater ];
-            text = ''
-              exec update-chatgpt-source --source-dir ${./nix} "$@"
-            '';
-          };
         in
         {
           default = chatgptDesktop;
           chatgpt-desktop = chatgptDesktop;
-          inherit updater;
-          fetch-source = fetchSource;
+          updater = pkgs.callPackage ./nix/updater.nix { };
         }
       );
 
@@ -45,10 +36,6 @@
         default = {
           type = "app";
           program = "${self.packages.${system}.default}/bin/chatgpt";
-        };
-        fetch = {
-          type = "app";
-          program = "${self.packages.${system}.fetch-source}/bin/fetch-chatgpt-source";
         };
       });
 
@@ -60,7 +47,6 @@
         {
           package = self.packages.${system}.default;
           updater = self.packages.${system}.updater;
-          codex-package = pkgs.callPackage ./nix/codex-package.nix { };
           source-metadata =
             pkgs.runCommand "chatgpt-source-metadata-check"
               {
@@ -70,39 +56,16 @@
                 jq -e \
                   --arg system ${nixpkgs.lib.escapeShellArg system} \
                   '
-                    .productId == "9PLM9XGG6VKS"
-                    and .identity == "OpenAI.Codex"
-                    and .architecture == "x64"
-                    and (.version | test("^[0-9]+([.][0-9]+){3}$"))
-                    and (.sha256 | startswith("sha256-"))
-                    and (.compatibility.codex.version | test("^[0-9]+([.][0-9]+){2}"))
-                    and all(
-                      .compatibility.codex.bundledX64Sha256[];
-                      test("^[0-9a-f]{64}$")
-                    )
-                    and (.compatibility.codex.packages[$system].target | endswith("-unknown-linux-musl"))
-                    and (.compatibility.codex.packages[$system].sha256 | startswith("sha256-"))
+                    (.version | test("^[0-9]+([.][0-9]+)+$"))
+                    and (.packages | keys | sort == ["aarch64-linux", "x86_64-linux"])
+                    and (.packages[$system].architecture == (
+                      if $system == "x86_64-linux" then "amd64" else "arm64" end
+                    ))
+                    and (.packages[$system].url | test(
+                      "^https://persistent[.]oaistatic[.]com/codex-app-prod/linux/deb/"
+                    ))
+                    and (.packages[$system].hash | startswith("sha256-"))
                   ' ${./nix/source.json} >/dev/null
-                touch "$out"
-              '';
-          store-output-parser =
-            pkgs.runCommand "chatgpt-store-output-parser-check"
-              {
-                nativeBuildInputs = [ pkgs.gawk ];
-              }
-              ''
-                cat > storelib.log <<'EOF'
-                [INFO] [fe3.packageFound] 1/2 — OpenAI.Codex_26.727.4816.0_x64__2p2nqsd0c76g0 | updateId=x64
-                [INFO] [fe3.linkReceived] 1/2 — OpenAI.Codex_26.727.4816.0_arm64__2p2nqsd0c76g0 | uri=http://dl.delivery.mp.microsoft.com/arm64 | updateId=arm64
-                [INFO] [fe3.linkReceived] 2/2 — OpenAI.Codex_26.727.4816.0_x64__2p2nqsd0c76g0 | uri=http://dl.delivery.mp.microsoft.com/x64?token=one&part=two | updateId=x64
-                EOF
-
-                awk -f ${./nix/parse-storelib-output.awk} storelib.log > actual
-                cat > expected <<'EOF'
-                OpenAI.Codex_26.727.4816.0_x64__2p2nqsd0c76g0
-                http://dl.delivery.mp.microsoft.com/x64?token=one&part=two
-                EOF
-                diff -u expected actual
                 touch "$out"
               '';
           scripts =
@@ -113,7 +76,6 @@
               ''
                 shellcheck \
                   ${./nix/update-source.sh} \
-                  ${./nix/verify-msix.sh} \
                   ${./scripts/update-source}
                 touch "$out"
               '';

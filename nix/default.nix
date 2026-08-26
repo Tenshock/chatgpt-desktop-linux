@@ -1,270 +1,152 @@
 {
   lib,
-  stdenvNoCC,
-  asar,
-  binutils,
-  callPackage,
-  electron_42,
-  file,
-  imagemagick,
-  jq,
-  libxml2,
-  makeDesktopItem,
+  stdenv,
+  fetchurl,
+  autoPatchelfHook,
+  dpkg,
   makeWrapper,
-  openssl,
-  osslsigncode,
-  perl,
-  requireFile,
-  systemdMinimal,
-  unzip,
+  wrapGAppsHook3,
+  alsa-lib,
+  atk,
+  at-spi2-core,
+  cairo,
+  cups,
+  dbus,
+  expat,
+  gdk-pixbuf,
+  glib,
+  gtk3,
+  libdrm,
+  libgbm,
+  libnotify,
+  libsecret,
+  libusb1,
+  libx11,
+  libxcb,
+  libxcomposite,
+  libxdamage,
+  libxext,
+  libxfixes,
+  libxrandr,
+  nspr,
+  nss,
+  pango,
+  systemd,
+  xdg-utils,
 }:
 
 let
   source = builtins.fromJSON (builtins.readFile ./source.json);
-  inherit (stdenvNoCC) hostPlatform;
-  inherit (hostPlatform) isAarch64;
-  npmArch =
-    if hostPlatform.isx86_64 then
-      "x64"
-    else if isAarch64 then
-      "arm64"
-    else
-      throw "ChatGPT Desktop does not support ${hostPlatform.system}";
-  elfArchitecture = if isAarch64 then "ARM aarch64" else "x86-64";
-  roots = callPackage ./microsoft-roots.nix { };
-  nativeModules = callPackage ./native-modules { };
-  codexPackage = callPackage ./codex-package.nix { };
-  updater = callPackage ./updater.nix { };
-
-  msix = requireFile {
-    name = source.fileName;
-    inherit (source) sha256;
-    message = ''
-      ChatGPT Desktop is not redistributable. Fetch and verify the official
-      Microsoft Store MSIX locally with:
-
-        nix run github:Tenshock/chatgpt-desktop-linux#fetch
-    '';
-  };
-
-  desktopItem = makeDesktopItem {
-    name = "chatgpt";
-    exec = "chatgpt %U";
-    icon = "chatgpt";
-    desktopName = "ChatGPT";
-    genericName = "AI assistant and coding agent";
-    comment = "Chat, Work, and Codex desktop application";
-    categories = [
-      "Network"
-      "Development"
-    ];
-    startupWMClass = "ChatGPT";
-    mimeTypes = [ "x-scheme-handler/codex" ];
-  };
+  system = stdenv.hostPlatform.system;
+  package = source.packages.${system} or (throw "ChatGPT Desktop does not support ${system}");
 in
-stdenvNoCC.mkDerivation {
+stdenv.mkDerivation {
   pname = "chatgpt-desktop";
   inherit (source) version;
 
-  src = msix;
-  sourceRoot = ".";
+  src = fetchurl {
+    inherit (package) url hash;
+  };
 
   nativeBuildInputs = [
-    binutils
-    asar
-    file
-    imagemagick
-    jq
-    libxml2
+    autoPatchelfHook
+    dpkg
     makeWrapper
-    openssl
-    osslsigncode
-    perl
-    unzip
+    wrapGAppsHook3
   ];
 
-  unpackPhase = ''
-    runHook preUnpack
+  buildInputs = [
+    alsa-lib
+    atk
+    at-spi2-core
+    cairo
+    cups
+    dbus
+    expat
+    gdk-pixbuf
+    glib
+    gtk3
+    libdrm
+    libgbm
+    libnotify
+    libsecret
+    libusb1
+    nspr
+    nss
+    pango
+    stdenv.cc.cc.lib
+    systemd
+    libx11
+    libxcb
+    libxcomposite
+    libxdamage
+    libxext
+    libxfixes
+    libxrandr
+  ];
 
-    bash ${./verify-msix.sh} \
-      "$src" \
-      ${roots.root2010} \
-      ${roots.root2011} \
-      ${lib.escapeShellArg source.version} \
-      ${lib.escapeShellArg source.identity} \
-      ${lib.escapeShellArg source.publisher} \
-      ${lib.escapeShellArg source.compatibility.owlRuntimeArchiveSha} \
-      ${lib.escapeShellArg source.compatibility.nativeModules."better-sqlite3"} \
-      ${lib.escapeShellArg source.compatibility.nativeModules."node-pty"} \
-      ${lib.escapeShellArg source.compatibility.nativeModules."node-hid"} \
-      ${lib.escapeShellArg source.compatibility.nativeModules."@serialport/bindings-cpp"} \
-      ${lib.escapeShellArg source.compatibility.codex.bundledX64Sha256.codex} \
-      ${lib.escapeShellArg source.compatibility.codex.bundledX64Sha256."codex-code-mode-host"} \
-      ${lib.escapeShellArg source.compatibility.codex.bundledX64Sha256.rg}
+  # Qt shims and musl native modules are optional alternatives bundled beside
+  # GTK/glibc implementations used by this package.
+  autoPatchelfIgnoreMissingDeps = [
+    "libQt5Core.so.5"
+    "libQt5Gui.so.5"
+    "libQt5Widgets.so.5"
+    "libQt6Core.so.6"
+    "libQt6Gui.so.6"
+    "libQt6Widgets.so.6"
+    "libc.musl-aarch64.so.1"
+    "libc.musl-x86_64.so.1"
+  ];
 
-    unzip -q "$src" 'app/resources/*'
+  runtimeDependencies = [
+    (lib.getLib libusb1)
+    (lib.getLib systemd)
+  ];
 
-    runHook postUnpack
-  '';
+  unpackCmd = "dpkg-deb -x $curSrc .";
+  sourceRoot = ".";
+
+  dontBuild = true;
+  dontConfigure = true;
+  dontStrip = true;
+  dontWrapGApps = true;
 
   installPhase = ''
     runHook preInstall
 
-    while IFS= read -r -d "" path; do
-      parent="''${path%/*}"
-      name="''${path##*/}"
-      decoded="''${name//%40/@}"
-      decoded="''${decoded//%2B/+}"
-      decoded="''${decoded//%24/\$}"
-      if [[ $decoded != "$name" ]]; then
-        mv -- "$path" "$parent/$decoded"
-      fi
-    done < <(find app/resources -depth -print0)
-
-    source_asar_hash=$(sha256sum app/resources/app.asar | cut -d ' ' -f 1)
-
-    mkdir -p "$out/lib/chatgpt"
-    cp -R app/resources "$out/lib/chatgpt/resources"
-    chmod -R u+w "$out/lib/chatgpt/resources"
-    resources="$out/lib/chatgpt/resources"
-
-    # ChatGPT explicitly enables Electron's title-bar overlay on Linux. Make
-    # its Linux package windows frameless and limit later overlay updates to
-    # Windows while preserving the byte length of app.asar, since changing an
-    # entry size would invalidate later archive offsets.
-    perl -0777pi -e '
-      my $old_options = q{{titleBarStyle:`hidden`,titleBarOverlay:T9(r),...e===`quickChat`?{resizable:!0}:{}}};
-      my $new_options = q{{frame:!1,...e===`quickChat`?{resizable:!0}:{}}};
-      $new_options .= " " x (length($old_options) - length($new_options));
-      my $count = s/\Q$old_options\E/$new_options/;
-      die "expected exactly one Linux title-bar option set, found $count\n"
-        unless $count == 1;
-
-      my $old_guard = q{if(process.platform!==`win32`&&process.platform!==`linux`||t!==`primary`&&t!==`quickChat`)return;};
-      my $new_guard = q{if(process.platform!==`win32`||t!==`primary`&&t!==`quickChat`)return;};
-      $new_guard .= " " x (length($old_guard) - length($new_guard));
-      $count = s/\Q$old_guard\E/$new_guard/;
-      die "expected exactly one title-bar overlay platform guard, found $count\n"
-        unless $count == 1;
-    ' "$resources/app.asar"
-
-    cp -R ${nativeModules}/parcel-watcher/node_modules "$resources/"
-
-    electron_dir=${electron_42.unwrapped}/libexec/electron
-    cp --reflink=auto "$electron_dir/electron" "$out/lib/chatgpt/chatgpt"
-    chmod u+w "$out/lib/chatgpt/chatgpt"
-    for runtime_file in "$electron_dir"/*; do
-      runtime_name="''${runtime_file##*/}"
-      case "$runtime_name" in
-        electron | resources) continue ;;
-      esac
-      ln -s "$runtime_file" "$out/lib/chatgpt/$runtime_name"
-    done
-
-    substitute ${electron_42}/bin/electron "$out/lib/chatgpt/electron-wrapper" \
-      --replace-fail \
-        "$electron_dir/electron" \
-        "$out/lib/chatgpt/chatgpt"
-    chmod +x "$out/lib/chatgpt/electron-wrapper"
-
-    install -Dm755 \
-      ${nativeModules}/better-sqlite3/better_sqlite3.node \
-      "$resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
-    install -Dm755 \
-      ${nativeModules}/node-pty/pty.node \
-      "$resources/app.asar.unpacked/node_modules/node-pty/build/Release/pty.node"
-    install -Dm755 \
-      ${nativeModules}/node-hid/HID.node \
-      "$resources/app.asar.unpacked/node_modules/@worklouder/device-kit-oai/node_modules/node-hid/build/Release/HID.node"
-    install -Dm755 \
-      ${nativeModules}/serialport/bindings.node \
-      "$resources/app.asar.unpacked/node_modules/@worklouder/device-kit-oai/node_modules/@serialport/bindings-cpp/build/Release/bindings.node"
-
-    rm -f \
-      "$resources/app.asar.unpacked/node_modules/node-pty/build/Release/conpty.node" \
-      "$resources/app.asar.unpacked/node_modules/node-pty/build/Release/conpty_console_list.node" \
-      "$resources/codex.exe" \
-      "$resources/codex-code-mode-host.exe" \
-      "$resources/codex-command-runner.exe" \
-      "$resources/codex-windows-sandbox-setup.exe" \
-      "$resources/rg.exe"
-
-    ${lib.optionalString isAarch64 ''
-      install -Dm755 ${codexPackage}/bin/codex "$resources/codex"
-      install -Dm755 \
-        ${codexPackage}/bin/codex-code-mode-host \
-        "$resources/codex-code-mode-host"
-      install -Dm755 ${codexPackage}/codex-path/rg "$resources/rg"
-    ''}
-
-    chmod +x \
-      "$resources/codex" \
-      "$resources/codex-code-mode-host" \
-      "$resources/rg"
-
-    magick "$resources/icon-chatgpt.ico[7]" "$resources/icon-chatgpt.png"
-    install -Dm644 \
-      "$resources/icon-chatgpt.png" \
-      "$out/share/icons/hicolor/256x256/apps/chatgpt.png"
-
-    mkdir -p "$out/share/applications"
-    cp ${desktopItem}/share/applications/chatgpt.desktop \
-      "$out/share/applications/chatgpt.desktop"
-
-    makeWrapper "$out/lib/chatgpt/electron-wrapper" "$out/bin/chatgpt" \
-      --set CODEX_ELECTRON_RESOURCES_PATH "$resources" \
-      --prefix PATH : ${lib.makeBinPath [ systemdMinimal ]} \
-      --add-flags "--ozone-platform-hint=auto" \
-      --add-flags "--password-store=gnome-libsecret"
-
-    installed_asar_hash=$(sha256sum "$resources/app.asar" | cut -d ' ' -f 1)
-    [[ $source_asar_hash != "$installed_asar_hash" ]]
-
-    grep -aFq '{frame:!1,...e===`quickChat`?{resizable:!0}:{}}' "$resources/app.asar"
-    grep -aFq \
-      'if(process.platform!==`win32`||t!==`primary`&&t!==`quickChat`)return;' \
-      "$resources/app.asar"
-
-    for helper in codex codex-code-mode-host rg; do
-      file "$resources/$helper" | grep -Eq 'ELF 64-bit.*${elfArchitecture}'
-    done
-    for addon in \
-      "$resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node" \
-      "$resources/app.asar.unpacked/node_modules/node-pty/build/Release/pty.node" \
-      "$resources/app.asar.unpacked/node_modules/@worklouder/device-kit-oai/node_modules/node-hid/build/Release/HID.node" \
-      "$resources/app.asar.unpacked/node_modules/@worklouder/device-kit-oai/node_modules/@serialport/bindings-cpp/build/Release/bindings.node"; do
-      file "$addon" | grep -Eq 'ELF 64-bit.*${elfArchitecture}'
-    done
-    ! grep -Fq -- '--no-sandbox' "$out/bin/chatgpt"
-    ! grep -Fq -- '--disable-features=WaylandWindowDecorations' "$out/bin/chatgpt"
-    grep -Fq "$out/lib/chatgpt/chatgpt" "$out/lib/chatgpt/electron-wrapper"
-    ! grep -Fq "$resources/app.asar" "$out/bin/chatgpt"
-    test -f "$resources/node_modules/@parcel/watcher/index.js"
-    file "$resources/node_modules/@parcel/watcher-linux-${npmArch}-glibc/watcher.node" \
-      | grep -Eq 'ELF 64-bit.*${elfArchitecture}'
+    mkdir -p "$out/bin" "$out/lib" "$out/share"
+    cp -R usr/lib/chatgpt "$out/lib/"
+    cp -R usr/share/applications "$out/share/"
+    cp -R usr/share/doc "$out/share/"
+    cp -R usr/share/pixmaps "$out/share/"
+    ln -s ../lib/chatgpt/codex-launcher "$out/bin/chatgpt"
 
     runHook postInstall
   '';
 
-  preferLocalBuild = true;
-  allowSubstitutes = false;
-  dontStrip = true;
+  postFixup = ''
+    wrapProgram "$out/lib/chatgpt/codex-launcher" \
+      "''${gappsWrapperArgs[@]}" \
+      --prefix PATH : ${lib.makeBinPath [ xdg-utils ]}
 
-  passthru = {
-    inherit nativeModules updater;
-    updateScript = ./update;
-  };
+    test -x "$out/lib/chatgpt/ChatGPT"
+    test -x "$out/lib/chatgpt/resources/codex"
+    test -x "$out/lib/chatgpt/resources/codex-code-mode-host"
+    test -x "$out/lib/chatgpt/resources/rg"
+    test -L "$out/bin/chatgpt"
+    grep -Fq 'Exec=chatgpt %U' "$out/share/applications/chatgpt.desktop"
+    ! grep -Fq -- '--no-sandbox' "$out/lib/chatgpt/codex-launcher"
+  '';
+
+  passthru.updateScript = ../scripts/update-source;
 
   meta = {
-    description = "Unofficial Linux package of OpenAI's official ChatGPT desktop application";
-    homepage = "https://github.com/Tenshock/chatgpt-desktop-linux";
+    description = "Official ChatGPT desktop application for Linux";
+    homepage = "https://chatgpt.com/download/";
+    downloadPage = "https://learn.chatgpt.com/docs/linux/linux-app";
     license = lib.licenses.unfree;
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
     mainProgram = "chatgpt";
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
-    hydraPlatforms = [ ];
+    platforms = builtins.attrNames source.packages;
   };
 }

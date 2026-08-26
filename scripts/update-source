@@ -7,7 +7,7 @@ repo_root=$(cd -- "$script_dir/.." && pwd)
 updater=$(nix build \
   --no-link \
   --print-out-paths \
-  "$repo_root#updater")
+  "path:$repo_root#updater")
 
 exec "$updater/bin/update-chatgpt-source" \
   --source-dir "$repo_root/nix" \

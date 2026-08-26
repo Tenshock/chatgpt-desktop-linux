@@ -1,36 +1,15 @@
 {
-  "productId": "9PLM9XGG6VKS",
-  "version": "26.818.5229.0",
-  "fileName": "OpenAI.Codex_26.818.5229.0_x64.msix",
-  "sha256": "sha256-qGacvvoEPgzawDvy5ApeJPcN/tw+EAEm5sKlr6A3qzs=",
-  "identity": "OpenAI.Codex",
-  "publisher": "CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B",
-  "architecture": "x64",
-  "compatibility": {
-    "owlRuntimeArchiveSha": "a5bab373ecb8eb8778e7eef3218583076868b63d6d193ba08e405c66a2981468",
-    "codex": {
-      "version": "0.146.0-alpha.9.2",
-      "bundledX64Sha256": {
-        "codex": "d028933edf13426bca29cf18ff499390e3362749d9cdd35feed927fe4118df96",
-        "codex-code-mode-host": "83fe4d39b319f51183f41a2113fb852f8ef35fc3e4d07acee9b47aa17af3fcce",
-        "rg": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849"
-      },
-      "packages": {
-        "x86_64-linux": {
-          "target": "x86_64-unknown-linux-musl",
-          "sha256": "sha256-qEx81ai8FMtj5NZojUeSyLIlS6bMBpheY8FTgnH/qFc="
-        },
-        "aarch64-linux": {
-          "target": "aarch64-unknown-linux-musl",
-          "sha256": "sha256-IdxCYlhoub49xZ/ijksXFj7oXD7JuDARc9PU7G5GKvM="
-        }
-      }
+  "version": "26.820.60940",
+  "packages": {
+    "x86_64-linux": {
+      "architecture": "amd64",
+      "url": "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.820.60940_amd64.deb",
+      "hash": "sha256-MdlWqMbFFfjYfgt6zZ7JGffmhbpZMxtLl6pF+FOv39c="
     },
-    "nativeModules": {
-      "better-sqlite3": "12.9.0",
-      "node-pty": "1.1.0",
-      "node-hid": "3.4.0",
-      "@serialport/bindings-cpp": "12.0.1"
+    "aarch64-linux": {
+      "architecture": "arm64",
+      "url": "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.820.60940_arm64.deb",
+      "hash": "sha256-j02sv/XwVKT2nCoCHxOWxXl2lygpphBB/rrBtCPyfIY="
     }
   }
 }

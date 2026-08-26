@@ -3,17 +3,12 @@
 set -euo pipefail
 
 write_metadata=false
-override_compatibility=false
 source_dir=
 
 while (( $# > 0 )); do
   case "$1" in
     --write)
       write_metadata=true
-      shift
-      ;;
-    --override)
-      override_compatibility=true
       shift
       ;;
     --source-dir)
@@ -27,171 +22,162 @@ while (( $# > 0 )); do
   esac
 done
 
-if $override_compatibility && ! $write_metadata; then
-  echo "--override requires --write" >&2
-  exit 2
-fi
-
 [[ -n $source_dir && -f $source_dir/source.json ]] || {
   echo "--source-dir must point at the package source directory" >&2
   exit 2
 }
-
-product_id=$(jq -r .productId "$source_dir/source.json")
-current_version=$(jq -r .version "$source_dir/source.json")
-identity=$(jq -r .identity "$source_dir/source.json")
-publisher=$(jq -r .publisher "$source_dir/source.json")
-runtime_sha=$(jq -r .compatibility.owlRuntimeArchiveSha "$source_dir/source.json")
-better_sqlite3=$(jq -r '.compatibility.nativeModules["better-sqlite3"]' "$source_dir/source.json")
-node_pty=$(jq -r '.compatibility.nativeModules["node-pty"]' "$source_dir/source.json")
-node_hid=$(jq -r '.compatibility.nativeModules["node-hid"]' "$source_dir/source.json")
-serialport=$(jq -r '.compatibility.nativeModules["@serialport/bindings-cpp"]' "$source_dir/source.json")
-codex_sha=$(jq -r '.compatibility.codex.bundledX64Sha256.codex' "$source_dir/source.json")
-code_mode_host_sha=$(jq -r '.compatibility.codex.bundledX64Sha256["codex-code-mode-host"]' "$source_dir/source.json")
-rg_sha=$(jq -r '.compatibility.codex.bundledX64Sha256.rg' "$source_dir/source.json")
+[[ -n ${CHATGPT_REPOSITORY_KEY:-} && -f $CHATGPT_REPOSITORY_KEY ]] || {
+  echo "CHATGPT_REPOSITORY_KEY must point at the pinned repository key" >&2
+  exit 2
+}
 
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
 
-for attempt in 1 2 3; do
-  storelib_rs --log-level info packages "$product_id" \
-    > "$work_dir/storelib.log" 2>&1 || true
+metadata=$(jq -n '{ packages: {} }')
+version=
+repository_url=https://persistent.oaistatic.com/codex-app-prod/linux/deb
+in_release="$work_dir/InRelease"
+repository_keyring="$work_dir/openai-linux-repository.gpg"
 
-  mapfile -t resolved_package < <(
-    awk -f "$CHATGPT_STORE_OUTPUT_PARSER" "$work_dir/storelib.log" || true
-  )
-  moniker=${resolved_package[0]:-}
-  url=${resolved_package[1]:-}
-
-  [[ -n $moniker && -n $url ]] && break
-  sleep "$attempt"
-done
-
-[[ -n ${moniker:-} && -n ${url:-} ]] || {
-  echo "Store resolver returned no x64 OpenAI.Codex MSIX" >&2
-  tail -n 20 "$work_dir/storelib.log" >&2
-  exit 1
-}
-
-scheme=${url%%://*}
-case "$scheme" in
-  http | https) ;;
-  *)
-    echo "refusing unsupported Store delivery scheme: $scheme" >&2
-    exit 1
-    ;;
-esac
-
-host=${url#*://}
-host=${host%%/*}
-case "$host" in
-  *.dl.delivery.mp.microsoft.com) ;;
-  *)
-    echo "refusing non-Microsoft Store delivery host: $host" >&2
-    exit 1
-    ;;
-esac
-
-version=${moniker#OpenAI.Codex_}
-version=${version%%_x64__*}
-
-if ! $write_metadata && [[ $version != "$current_version" ]]; then
-  echo "Microsoft Store now serves ChatGPT $version, but this revision pins $current_version." >&2
-  echo "Wait for repository metadata to be updated, or use scripts/update-source as a maintainer." >&2
-  exit 1
-fi
-
-file_name="OpenAI.Codex_${version}_x64.msix"
-download="$work_dir/$file_name"
+gpg \
+  --batch \
+  --dearmor \
+  --output "$repository_keyring" \
+  "$CHATGPT_REPOSITORY_KEY"
 
 curl \
-  --cacert "$CHATGPT_STORE_CA_BUNDLE" \
   --fail \
   --location \
-  --proto '=http,https' \
+  --proto '=https' \
   --proto-redir '=https' \
   --retry 3 \
-  --output "$download" \
-  "$url"
+  --output "$in_release" \
+  "$repository_url/dists/stable/InRelease"
+gpgv --keyring "$repository_keyring" "$in_release"
 
-verify_args=(
-  "$download" \
-  "$CHATGPT_MICROSOFT_ROOT_2010" \
-  "$CHATGPT_MICROSOFT_ROOT_2011" \
-  "$version" \
-  "$identity" \
-  "$publisher" \
-  "$runtime_sha" \
-  "$better_sqlite3" \
-  "$node_pty" \
-  "$node_hid" \
-  "$serialport" \
-  "$codex_sha" \
-  "$code_mode_host_sha" \
-  "$rg_sha"
-)
+for system in x86_64-linux aarch64-linux; do
+  architecture=$(jq -er --arg system "$system" '.packages[$system].architecture' "$source_dir/source.json")
+  packages_index_gz="$work_dir/Packages-${architecture}.gz"
+  packages_index="$work_dir/Packages-${architecture}"
+  package_path="$work_dir/chatgpt_${architecture}.deb"
+  index_path="main/binary-${architecture}/Packages.gz"
 
-runtime_sha_output=
-if $override_compatibility; then
-  runtime_sha_output="$work_dir/owl-runtime-sha"
-fi
-codex_sha_output=
-if $override_compatibility; then
-  codex_sha_output="$work_dir/codex-resource-sha.json"
-fi
-verify_args+=("$runtime_sha_output" "$codex_sha_output")
+  signed_index_sha256=$(awk -v path="$index_path" '
+    $1 == "SHA256:" { in_sha256 = 1; next }
+    in_sha256 && /^[^ ]/ { in_sha256 = 0 }
+    in_sha256 && $3 == path { print $1; exit }
+  ' "$in_release")
+  [[ $signed_index_sha256 =~ ^[0-9a-f]{64}$ ]] || {
+    echo "signed repository metadata has no SHA256 for $index_path" >&2
+    exit 1
+  }
 
-verify-chatgpt-msix "${verify_args[@]}"
+  curl \
+    --fail \
+    --location \
+    --proto '=https' \
+    --proto-redir '=https' \
+    --retry 3 \
+    --output "$packages_index_gz" \
+    "$repository_url/dists/stable/$index_path"
 
-verified_runtime_sha=$runtime_sha
-if [[ -n $runtime_sha_output ]]; then
-  verified_runtime_sha=$(< "$runtime_sha_output")
-fi
-verified_codex_sha=$codex_sha
-verified_code_mode_host_sha=$code_mode_host_sha
-verified_rg_sha=$rg_sha
-if [[ -n $codex_sha_output ]]; then
-  verified_codex_sha=$(jq -er .codex "$codex_sha_output")
-  verified_code_mode_host_sha=$(jq -er '."codex-code-mode-host"' "$codex_sha_output")
-  verified_rg_sha=$(jq -er .rg "$codex_sha_output")
-fi
+  downloaded_index_sha256=$(sha256sum "$packages_index_gz")
+  downloaded_index_sha256=${downloaded_index_sha256%% *}
+  [[ $downloaded_index_sha256 == "$signed_index_sha256" ]] || {
+    echo "package index hash does not match signed repository metadata for $system" >&2
+    exit 1
+  }
+  gzip -dc "$packages_index_gz" > "$packages_index"
 
-sha256=$(nix hash file "$download")
-store_path=$(nix-store --add-fixed sha256 "$download")
+  index_field() {
+    local field=$1
+    awk -v field="$field" '
+      $1 == "Package:" && $2 == "chatgpt" { found = 1 }
+      found && $1 == field ":" { print $2; exit }
+    ' "$packages_index"
+  }
+
+  filename=$(index_field Filename)
+  index_version=$(index_field Version)
+  index_sha256=$(index_field SHA256)
+
+  [[ $filename == pool/main/c/chatgpt/chatgpt_*_${architecture}.deb ]] || {
+    echo "unexpected package filename for $system: $filename" >&2
+    exit 1
+  }
+  [[ $index_version =~ ^[0-9]+([.][0-9]+)+$ ]] || {
+    echo "unexpected package version for $system: $index_version" >&2
+    exit 1
+  }
+  [[ $index_sha256 =~ ^[0-9a-f]{64}$ ]] || {
+    echo "unexpected package hash for $system: $index_sha256" >&2
+    exit 1
+  }
+
+  url="$repository_url/$filename"
+
+  curl \
+    --fail \
+    --location \
+    --proto '=https' \
+    --proto-redir '=https' \
+    --retry 3 \
+    --output "$package_path" \
+    "$url"
+
+  package_name=$(dpkg-deb --field "$package_path" Package)
+  package_architecture=$(dpkg-deb --field "$package_path" Architecture)
+  package_version=$(dpkg-deb --field "$package_path" Version)
+  downloaded_sha256=$(sha256sum "$package_path")
+  downloaded_sha256=${downloaded_sha256%% *}
+
+  [[ $package_name == chatgpt ]] || {
+    echo "unexpected package name for $system: $package_name" >&2
+    exit 1
+  }
+  [[ $package_architecture == "$architecture" ]] || {
+    echo "unexpected architecture for $system: $package_architecture" >&2
+    exit 1
+  }
+  [[ $package_version == "$index_version" ]] || {
+    echo "package version does not match repository index for $system" >&2
+    exit 1
+  }
+  [[ $downloaded_sha256 == "$index_sha256" ]] || {
+    echo "package hash does not match repository index for $system" >&2
+    exit 1
+  }
+
+  if [[ -z $version ]]; then
+    version=$package_version
+  elif [[ $package_version != "$version" ]]; then
+    echo "official packages have different versions: $version and $package_version" >&2
+    exit 1
+  fi
+
+  hash=$(nix hash file "$package_path")
+  metadata=$(jq \
+    --arg system "$system" \
+    --arg architecture "$architecture" \
+    --arg url "$url" \
+    --arg hash "$hash" \
+    '.packages[$system] = {
+      architecture: $architecture,
+      url: $url,
+      hash: $hash
+    }' <<< "$metadata")
+done
+
+metadata=$(jq --arg version "$version" '.version = $version' <<< "$metadata")
+metadata=$(jq '{ version, packages }' <<< "$metadata")
+
+echo "version: $version"
+jq -r '.packages | to_entries[] | "\(.key): \(.value.hash)"' <<< "$metadata"
 
 if $write_metadata; then
   metadata_tmp="$work_dir/source.json"
-  jq \
-    --arg version "$version" \
-    --arg file_name "$file_name" \
-    --arg sha256 "$sha256" \
-    --arg runtime_sha "$verified_runtime_sha" \
-    --arg codex_sha "$verified_codex_sha" \
-    --arg code_mode_host_sha "$verified_code_mode_host_sha" \
-    --arg rg_sha "$verified_rg_sha" \
-    '.version = $version
-      | .fileName = $file_name
-      | .sha256 = $sha256
-      | .compatibility.owlRuntimeArchiveSha = $runtime_sha
-      | .compatibility.codex.bundledX64Sha256.codex = $codex_sha
-      | .compatibility.codex.bundledX64Sha256["codex-code-mode-host"] = $code_mode_host_sha
-      | .compatibility.codex.bundledX64Sha256.rg = $rg_sha' \
-    "$source_dir/source.json" > "$metadata_tmp"
+  jq . <<< "$metadata" > "$metadata_tmp"
   mv "$metadata_tmp" "$source_dir/source.json"
-fi
-
-echo "version: $version"
-echo "sha256: $sha256"
-echo "store path: $store_path"
-if $write_metadata; then
   echo "updated: $source_dir/source.json"
-fi
-if $override_compatibility && [[ $verified_runtime_sha != "$runtime_sha" ]]; then
-  echo "accepted Owl runtime: $verified_runtime_sha"
-fi
-if $override_compatibility \
-  && [[ $verified_codex_sha != "$codex_sha" \
-    || $verified_code_mode_host_sha != "$code_mode_host_sha" \
-    || $verified_rg_sha != "$rg_sha" ]]; then
-  echo "accepted bundled Codex resource hashes"
 fi

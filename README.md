@@ -1,49 +1,35 @@
 # ChatGPT Desktop for Linux (Nix)
 
-> See [Differences from `ilysenko/codex-desktop-linux`](#differences-from-ilysenkocodex-desktop-linux).
-> **TL;DR:** this project stays closer to official ChatGPT Desktop sources.
+Nix package for OpenAI's official ChatGPT desktop application for Linux.
 
-Nix package running OpenAI's official Windows ChatGPT Desktop application on
-`x86_64-linux` and `aarch64-linux`.
-
-Project downloads user's own Microsoft Store MSIX, verifies its identity and
-signature, replaces Windows Electron/native components with matching Linux
-builds, and leaves official `app.asar` unchanged.
-
-This is unofficial packaging. OpenAI does not provide or support this Linux
-build. See [NOTICE.md](NOTICE.md).
+OpenAI provides Linux preview packages for Ubuntu, Debian, and Fedora on x64
+and ARM64. This flake repackages official `.deb` files for NixOS without
+changing application code or replacing bundled components.
 
 ## Status
 
-- Source: official Microsoft Store package `OpenAI.Codex`.
-- Electron: 42.
+- Source: official OpenAI Linux `.deb` package.
+- Version: `26.820.60940`.
 - Platforms: `x86_64-linux` and `aarch64-linux`.
-- Electron sandbox: enabled.
-- Tested on x86-64: packaged UI launch, Codex app-server connection, SQLite, PTY, HID,
-  serial port, Git repository inotify events, GitHub CLI startup, Nix package,
-  and NixOS toplevel build.
-- ARM64: native package and CI build path; desktop runtime still needs validation
-  on ARM64 hardware.
+- Application payload: unchanged except Nix ELF/RPATH and script-interpreter
+  paths.
+- Updates: pinned by hash and applied through flake updates.
 
-## How to Install
+OpenAI lists Ubuntu 24.04/26.04, Debian 13, and Fedora 43/44 as supported
+desktop distributions. NixOS is not formally supported; this repository is an
+independent Nix packaging layer.
 
-Nix flakes must be enabled. Source is proprietary and cannot be redistributed,
-so first fetch user's official copy into local Nix store:
+See [official Linux documentation](https://learn.chatgpt.com/docs/linux/linux-app)
+and [ChatGPT downloads](https://chatgpt.com/download/).
 
-```console
-nix run github:Tenshock/chatgpt-desktop-linux#fetch
-```
-
-Run without installing:
+## Run
 
 ```console
 nix run github:Tenshock/chatgpt-desktop-linux
 ```
 
-If Microsoft Store already moved to a newer version than repository metadata,
-fetch command stops with a clear version mismatch. Wait for repository update;
-old revisions may no longer be bootstrapable because Store serves only current
-package.
+No separate source-fetch step is required. Official packages are public and
+downloaded directly from OpenAI's `persistent.oaistatic.com` host.
 
 ### NixOS module
 
@@ -67,15 +53,6 @@ Import module and enable package:
 }
 ```
 
-On the first installation on a machine, add the proprietary MSIX to its local
-Nix store, then rebuild. Later rebuilds need only `nixos-rebuild` while that
-store path still exists:
-
-```console
-nix run github:Tenshock/chatgpt-desktop-linux#fetch
-sudo nixos-rebuild switch --flake .#your-hostname
-```
-
 ### Home Manager module
 
 ```nix
@@ -93,110 +70,41 @@ environment.systemPackages = [
 ];
 ```
 
-## What Package Changes
+## Packaging
 
-Package preserves official application archive byte-for-byte. Linux adaptation
-happens around it:
+Package keeps OpenAI's Linux layout under `lib/chatgpt`, including:
 
-- true packaged Electron directory layout;
-- Nixpkgs Electron 42 runtime;
-- rebuilt Linux `better-sqlite3`, `node-pty`, `node-hid`, and serial-port addons;
-- exact `@parcel/watcher` 2.5.6 Linux binding declared by official app;
-- version-matched official Linux `codex`, `codex-code-mode-host`, and `rg`
-  helpers (MSIX copies on x86-64, OpenAI Codex release package on ARM64);
-- Wayland auto-selection and libsecret password-store flags;
-- desktop entry, icon, and `codex://` protocol association.
+- official Electron/Chromium runtime;
+- official Linux native modules;
+- bundled `codex`, `codex-code-mode-host`, and `rg` executables;
+- bundled plugins and Computer Use resources;
+- official desktop entry and icon.
 
-## Differences from ilysenko/codex-desktop-linux
+Nix packaging changes only ELF interpreters/RPATHs, launcher environment,
+installation paths, and dependency references required by NixOS. It does not
+install OpenAI's Debian APT repository or AppArmor profile.
 
-This project aims to stay as close as possible to the official
-ChatGPT Desktop version: it preserves the official application archive
-byte-for-byte and limits changes to the Linux runtime and native components
-required around it.
+Official documentation says Computer Use is not yet available in Linux
+preview. Native Wayland is experimental; default behavior uses XWayland when
+available. Launch explicitly with native Wayland using:
 
-A notable security difference is sandbox policy: this project keeps Electron's
-sandbox enabled and fails its package check if `--no-sandbox` appears in the
-launcher. The compared project's current launcher disables it. Sandbox process
-isolation reduces impact from a compromised renderer, but cannot make either
-unofficial Linux package equivalent to an OpenAI-supported release.
+```console
+chatgpt --ozone-platform=wayland
+```
 
-[ilysenko/codex-desktop-linux](https://github.com/ilysenko/codex-desktop-linux)
-is larger Linux adaptation project. Both projects are unofficial and currently
-package same internal application generation, but goals differ.
-
-| Area                | This project                                          | `ilysenko/codex-desktop-linux`                                    |
-| ------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
-| Official source     | Windows Microsoft Store MSIX                          | macOS DMG                                                         |
-| Application archive | Kept byte-identical                                   | Extracted, patched, repacked                                      |
-| Goal                | Minimal Linux adaptation around official Windows app  | Linux-first compatibility and extra features                      |
-| Codex CLI           | Version-matched official Linux helpers                | External CLI required/configurable                                |
-| Git watching        | Official Parcel watcher with Linux binding            | Upstream path plus optional bounded/shallow watcher patches       |
-| Wayland             | Direct Electron auto hint                             | XWayland/Wayland detection and GPU workaround launcher            |
-| Sandbox             | Enabled                                               | Launcher currently uses `--no-sandbox`                            |
-| Computer Use        | Official resources retained; Linux control unverified | Dedicated Rust Linux backend and optional UI                      |
-| Plugins             | Official MSIX payload retained                        | Selected plugins staged and Linux-patched                         |
-| Linux extras        | None                                                  | Dictation, AppShots, remote control, Codex Micro, UI tweaks, more |
-| Nix modules         | Small NixOS/Home Manager install modules              | Rich modules with feature and service options                     |
-| Architectures       | `x86_64-linux`, `aarch64-linux`                       | `x86_64-linux`, `aarch64-linux`                                   |
-
-Choose this project for closest Windows-app fidelity, fewer application-code
-changes, and enabled Electron sandbox. Choose ilysenko project for broader
-Linux desktop integration, Computer Use support, or optional features.
-
-Detailed comparison sources:
-
-- [ilysenko architecture](https://github.com/ilysenko/codex-desktop-linux/blob/main/docs/architecture.md)
-- [ilysenko feature matrix](https://github.com/ilysenko/codex-desktop-linux#feature-matrix)
-- [ilysenko Nix documentation](https://github.com/ilysenko/codex-desktop-linux/blob/main/docs/nix.md)
-
-## Updating Source Metadata
-
-Maintainers:
+## Updating
 
 ```console
 ./scripts/update-source
-git diff -- nix/source.json
-nix flake check --print-build-logs
-```
-
-Updater downloads only from Microsoft Store delivery hosts and verifies:
-
-- APPX identity, publisher, architecture, version, and display name;
-- package signature and timestamp chain against pinned Microsoft roots;
-- APPX block hashes through `osslsigncode`;
-- Owl runtime compatibility identifier;
-- hashes of bundled x86-64 Codex helpers used to select the matching ARM64
-  OpenAI Codex release;
-- native-module versions expected by Linux rebuild.
-
-Changed runtime, Codex helper, or native-module versions intentionally stop
-automated update. They require compatibility audit and explicit metadata
-change.
-
-## Development
-
-```console
-nix run .#fetch
 nix flake check --print-build-logs
 nix fmt -- --check .
 ```
 
-`nix run .#fetch` adds proprietary MSIX only to local Nix store. Do not commit,
-publish, attach, or cache MSIX or final ChatGPT package.
-
-## Known Limitations
-
-- No official Linux support from OpenAI.
-- New users depend on current Microsoft Store version matching repository.
-- ARM64 desktop runtime has not yet been validated on physical ARM64 hardware.
-- Computer Use and all bundled plugins lack full Linux end-to-end validation.
-- Nix store is immutable; plugins attempting to update their packaged files may
-  fail and need future writable-staging adaptation.
-- OpenAI can change package format, signatures, native dependencies, or service
-  behavior at any time.
+Updater verifies OpenAI's signed stable APT metadata against pinned repository
+key, downloads both versioned official `.deb` files, verifies repository hash,
+package name, architecture, and matching version, then records their Nix hashes.
 
 ## License
 
-Repository packaging code: MIT. Official application and third-party software:
-their respective licenses and terms. See [LICENSE](LICENSE) and
-[NOTICE.md](NOTICE.md).
+Repository packaging code: MIT. ChatGPT application and bundled third-party
+software: their respective licenses and terms. See [NOTICE.md](NOTICE.md).

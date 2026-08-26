@@ -21,8 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
-      - name: Fetch official source locally
-        run: nix run .#fetch
       - name: Check flake
         run: nix flake check --print-build-logs
       - name: Check formatting
